@@ -4,7 +4,6 @@ import numpy as np
 import cv2
 import face_recognition
 
-
 image_0 = face_recognition.load_image_file('KnownImages/marek_0.png')
 image_1 = face_recognition.load_image_file('KnownImages/stas_0.png')
 
@@ -15,12 +14,18 @@ known_face_encodings = [face_enc_0, face_enc_1]
 known_face_names = ['Marek', 'Stas']
 
 video_capture = cv2.VideoCapture(0)
+# set resolution lower to speeds up FPS
+# Be aware!!
+# Make sure that the webcam supports the resolution that you are setting to using v4l2-ctl command
+# v4l2-ctl --list-formats-ext
+video_capture.set(3, 352) #Setting webcam's image width
+video_capture.set(4, 288)  # Setting webcam' image height
 
 while True:
 
     ret, frame = video_capture.read()
 
-    # Resize frame of video to 1/5 size for faster face recognition processing
+    # Resize frame of video to 1/2 size for faster face recognition processing
     small_frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
 
     # Converting the frame from OpenCV's BGR format to the RGB format
