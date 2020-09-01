@@ -28,6 +28,11 @@ python3.6 setup.py install
 cd ..
 python3.6 -m pip install face_recognition
 
+# for the threaded code example we need the imutils package
+# See https://www.pyimagesearch.com/2015/12/21/increasing-webcam-fps-with-python-and-opencv/
+python3 -m pip install imutils
+
+
 
 
 

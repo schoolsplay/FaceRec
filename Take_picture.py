@@ -1,8 +1,15 @@
+import os
+
 import cv2
 
 print("Use the space bar to take a picture, 3 per person is enough")
 print("Use the Escape key to stop")
-print("Images are stored in base folder")
+print("Images are stored in /KnownImages")
+
+name = input("Please give the name of the person")
+
+if not os.path.exists('KnownImages'):
+    os.makedirs('KnownImages')
 
 cam = cv2.VideoCapture(0)
 
@@ -15,7 +22,7 @@ while True:
     if not ret:
         print("failed to grab frame")
         break
-    cv2.imshow("test", frame)
+    cv2.imshow("Take picture, look at the camera please", frame)
 
     k = cv2.waitKey(1)
     if k % 256 == 27:
@@ -24,9 +31,9 @@ while True:
         break
     elif k % 256 == 32:
         # SPACE pressed
-        img_name = "opencv_frame_{}.png".format(img_counter)
+        img_name = f"KnownImages/{name}_{img_counter}.png"
         cv2.imwrite(img_name, frame)
-        print("{} written!".format(img_name))
+        print(f"{img_name} written!")
         img_counter += 1
 
 cam.release()
