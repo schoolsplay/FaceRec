@@ -4,6 +4,11 @@ import numpy as np
 import cv2
 import face_recognition
 
+import atexit
+
+frame_rate = 10
+prev = 0
+
 image_0 = face_recognition.load_image_file('KnownImages/marek_0.png')
 image_1 = face_recognition.load_image_file('KnownImages/stas_0.png')
 
@@ -14,6 +19,10 @@ known_face_encodings = [face_enc_0, face_enc_1]
 known_face_names = ['Marek', 'Stas']
 
 video_capture = cv2.VideoCapture(0)
+
+atexit.register(video_capture.release)
+atexit.register(cv2.destroyAllWindows)
+
 # set resolution lower to speeds up FPS
 # Be aware!!
 # Make sure that the webcam supports the resolution that you are setting to using v4l2-ctl command
@@ -21,10 +30,9 @@ video_capture = cv2.VideoCapture(0)
 video_capture.set(3, 352) #Setting webcam's image width
 video_capture.set(4, 288)  # Setting webcam' image height
 
-while True:
+def find_face(frame):
 
-    ret, frame = video_capture.read()
-
+    name = "Unknown"
     # Resize frame of video to 1/2 size for faster face recognition processing
     small_frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
 
@@ -41,8 +49,6 @@ while True:
         # Checking if the face is a match for known faces
         matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
 
-        name = 'Unknown'
-
         # Use the known face with the smallest vector distance to the new face
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
         best_match_index = np.argmin(face_distances)
@@ -50,18 +56,32 @@ while True:
         if matches[best_match_index]:
             name = known_face_names[best_match_index]
 
-        # Scale back up face locations since the frame we detected in was scaled to 1/10 size
-        top *= 2
-        right *= 2
-        bottom *= 2
-        left *= 2
-        # Draw a box around the face
-        cv2.rectangle(frame, (left, top), (right, bottom), (255, 0, 0), 2)
+            # # Draw a box around the face
+            # cv2.rectangle(frame, (left, top), (right, bottom), (255, 0, 0), 2)
+            #
+            # # Draw a label with the name below the face
+            # cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (255, 0, 0), cv2.FILLED)
+            # font = cv2.FONT_HERSHEY_DUPLEX
+            # cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
 
-        # Draw a label with the name below the face
-        cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (255, 0, 0), cv2.FILLED)
-        font = cv2.FONT_HERSHEY_DUPLEX
-        cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+            return True, name
+
+    return False, name
+
+
+FoundFace = False
+
+while True:
+    time_elapsed = time.time() - prev
+    ret, frame = video_capture.read()
+
+    if time_elapsed > 1. / frame_rate:
+        prev = time.time()
+        if not FoundFace:
+            result, name = find_face(frame)
+            if result:
+                print(f"Found face: {name}")
+                FoundFace = True
 
     # Display the image
     cv2.imshow('Video', frame)
