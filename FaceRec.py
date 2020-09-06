@@ -64,8 +64,9 @@ class KnownPersons(object):
             print(f"Loading known persons {name} -> {image}")
             known_face_names.append(name)
             img = face_recognition.load_image_file(os.path.join('known_persons', image))
-            #known_face_encodings.append(face_recognition.face_encodings(img)[0])
-            known_face_encodings.append(face_recognition.face_encodings(img))
+            known_face_encodings.append(face_recognition.face_encodings(img)[0])
+            ### Use this to force a facerec exception
+            #known_face_encodings.append(face_recognition.face_encodings(img))
 
     @staticmethod
     def get_data():
