@@ -37,9 +37,12 @@ class KnownPersons(object):
     conf.read(os.path.join('known_persons', 'persons.ini'))
     for each_section in conf.sections():
         for name, image in conf.items(each_section):
+            print(name, image)
             known_face_names.append(name)
-            known_face_encodings.append(face_recognition.load_image_file(os.path.join('known_persons', image)))
+            img = face_recognition.load_image_file(os.path.join('known_persons', image))
+            known_face_encodings.append(face_recognition.face_encodings(img)[0])
     print("known persons", len(known_face_names), len(known_face_encodings))
+    print(known_face_encodings)
 
     @staticmethod
     def get_data():
@@ -66,7 +69,28 @@ class FrameCaptureWorker(Thread):
 
     def run(self):
         print("FaceRec.FrameCaptureWorker started")
+        try:
+            self._do_work()
+        except Exception as e:
+            print(f"FaceRec.FaceRecWorker, exception: {e}")
+            Q.empty()
+            Q.put(_sentinel)
+
+    def _do_work(self):
         while self.dowork:
+
+            try:
+                item = Q.get_nowait()
+            except Empty as e:
+                pass
+            else:
+                if item is _sentinel:
+                    Q.empty()
+                    Q.put(_sentinel)
+                    self.dowork = False
+                else:
+                    Q.put(item)
+
             time_elapsed = time.time() - self.prev
 
             if time_elapsed > 1. / self.frame_rate:
@@ -75,7 +99,8 @@ class FrameCaptureWorker(Thread):
                 try:
                     Q.put(frame)
                 except Full as e:
-                    continue
+                    Q.get()
+                    Q.put(frame)
                 else:
                     cv2.imshow('Video', frame)
 
@@ -85,6 +110,7 @@ class FrameCaptureWorker(Thread):
                 Q.empty()
                 Q.put(_sentinel)  # we signal the FaceRecWorker that we stopped
                 self.dowork = False
+        print("FaceRec.FaceCaptureWorker stopped")
 
 
 class FaceRecWorker(Thread):
@@ -118,7 +144,6 @@ class FaceRecWorker(Thread):
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
 
             # Checking if the face is a match for known faces
-            print("encodings", self.encodings)
             matches = face_recognition.compare_faces(self.encodings, face_encoding)
 
             # Use the known face with the smallest vector distance to the new face
@@ -135,22 +160,36 @@ class FaceRecWorker(Thread):
                 # cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (255, 0, 0), cv2.FILLED)
                 # font = cv2.FONT_HERSHEY_DUPLEX
                 # cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+                print("FaceRec.FaceRecWorker Found name", self.name)
                 return self.name
 
     def run(self):
         print("FaceRec.FaceRecWorker started")
+        try:
+            self._do_work()
+        except Exception as e:
+            print(f"FaceRec.FaceRecWorker, exception: {e}")
+            Q.empty()
+            Q.put(_sentinel)
+
+    def _do_work(self):
         while self.dowork:
             try:
                 frame = Q.get_nowait()
             except Empty as e:
                 continue
             else:
+                if frame is _sentinel:
+                    Q.empty()
+                    Q.put(_sentinel)
+                    self.dowork = False
+
                 if frame is not None and isinstance(frame, numpy.ndarray):
                     if self._find_face(frame):
                         Q.put(self.name)
                 else:
                     print("FaceRec.FaceRecWorker received no frame")
-
+        print("FaceRecWorker stopped")
 
 class Controller(object):
     """
