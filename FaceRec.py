@@ -37,12 +37,10 @@ class KnownPersons(object):
     conf.read(os.path.join('known_persons', 'persons.ini'))
     for each_section in conf.sections():
         for name, image in conf.items(each_section):
-            print(name, image)
+            print(f"Loading known persons {name} -> {image}")
             known_face_names.append(name)
             img = face_recognition.load_image_file(os.path.join('known_persons', image))
             known_face_encodings.append(face_recognition.face_encodings(img)[0])
-    print("known persons", len(known_face_names), len(known_face_encodings))
-    print(known_face_encodings)
 
     @staticmethod
     def get_data():
@@ -53,7 +51,7 @@ class FrameCaptureWorker(Thread):
     """
     Threaded worker which capture opencv frames from a source
     """
-    frame_rate = 5
+    frame_rate = 10
     """FPS value. We use this to lower the rate of which we read a frame as we can't
     really lower the framerate of a cam"""
 
