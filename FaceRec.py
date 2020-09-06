@@ -1,6 +1,7 @@
 import configparser
 import os
 import sys
+import threading
 import time
 from queue import Queue, Empty, Full
 from threading import Thread
@@ -12,13 +13,36 @@ import face_recognition
 
 import atexit
 
-_sentinel = object()
+
+class ThreadException(Exception):
+    pass
+
+
+class Sentinal(object):
+    """
+    Object to be shared on the Queue.
+    Used to signal to all threads a stop event
+    """
+
+    state = 'main'
+    """
+    Possible values: main, face, capture
+    main - When the user hits q in capture worker
+    face - Exception in face recognition worker
+    capture - Exception in video capture worker
+    """
+
+
+_sentinel = Sentinal()
+
 
 class NameQueue(Queue):
     def __init__(self):
         super(NameQueue, self).__init__(maxsize=10)
 
+
 Q = NameQueue()
+
 
 class KnownPersons(object):
     """
@@ -40,7 +64,8 @@ class KnownPersons(object):
             print(f"Loading known persons {name} -> {image}")
             known_face_names.append(name)
             img = face_recognition.load_image_file(os.path.join('known_persons', image))
-            known_face_encodings.append(face_recognition.face_encodings(img)[0])
+            #known_face_encodings.append(face_recognition.face_encodings(img)[0])
+            known_face_encodings.append(face_recognition.face_encodings(img))
 
     @staticmethod
     def get_data():
@@ -62,28 +87,29 @@ class FrameCaptureWorker(Thread):
         """
         super(FrameCaptureWorker, self).__init__()
         self.src = src
-        self.prev = 0  # used as a counter for the FPS
-        self.dowork = True
 
     def run(self):
         print("FaceRec.FrameCaptureWorker started")
+        self.prev = 0  # used as a counter for the FPS
+        self.dowork = True
         try:
             self._do_work()
         except Exception as e:
             print(f"FaceRec.FaceRecWorker, exception: {e}")
-            Q.empty()
+            Q.queue.clear()
+            _sentinel.state = 'capture'
             Q.put(_sentinel)
+            self.dowork = False
 
     def _do_work(self):
         while self.dowork:
-
             try:
                 item = Q.get_nowait()
             except Empty as e:
                 pass
             else:
                 if item is _sentinel:
-                    Q.empty()
+                    Q.queue.clear()
                     Q.put(_sentinel)
                     self.dowork = False
                 else:
@@ -99,15 +125,17 @@ class FrameCaptureWorker(Thread):
                 except Full as e:
                     Q.get()
                     Q.put(frame)
-                else:
-                    cv2.imshow('Video', frame)
+                cv2.imshow('Video', frame)
 
             # Hit 'q' on the keyboard to quit
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 print("FaceRec.FrameCaptureWorker has to stop, 'q' hit")
-                Q.empty()
+                Q.queue.clear()
+                _sentinel.state = 'main'
                 Q.put(_sentinel)  # we signal the FaceRecWorker that we stopped
                 self.dowork = False
+
+        cv2.destroyAllWindows()
         print("FaceRec.FaceCaptureWorker stopped")
 
 
@@ -115,6 +143,7 @@ class FaceRecWorker(Thread):
     """
     Threaded worker that will search for a face in a opencv frame
     """
+
     def __init__(self, frameworker, names, encodings):
         super(FaceRecWorker, self).__init__()
         self.frameworker = frameworker
@@ -125,7 +154,7 @@ class FaceRecWorker(Thread):
 
     def reset(self):
         self.name = ''
-        Q.empty()
+        Q.queue.clear()
 
     def _find_face(self, frame):
         # Resize frame of video to 1/2 size for faster face recognition processing
@@ -158,7 +187,7 @@ class FaceRecWorker(Thread):
                 # cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (255, 0, 0), cv2.FILLED)
                 # font = cv2.FONT_HERSHEY_DUPLEX
                 # cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
-                #print("FaceRec.FaceRecWorker Found name", self.name)
+                # print("FaceRec.FaceRecWorker Found name", self.name)
                 return self.name
 
     def run(self):
@@ -167,8 +196,10 @@ class FaceRecWorker(Thread):
             self._do_work()
         except Exception as e:
             print(f"FaceRec.FaceRecWorker, exception: {e}")
-            Q.empty()
+            Q.queue.clear()
+            _sentinel.state = 'face'
             Q.put(_sentinel)
+            self.dowork = False
 
     def _do_work(self):
         while self.dowork:
@@ -178,7 +209,7 @@ class FaceRecWorker(Thread):
                 continue
             else:
                 if frame is _sentinel:
-                    Q.empty()
+                    Q.queue.clear()
                     Q.put(_sentinel)
                     self.dowork = False
 
@@ -189,20 +220,21 @@ class FaceRecWorker(Thread):
                 #     print("FaceRec.FaceRecWorker received no frame")
         print("FaceRecWorker stopped")
 
+
 class Controller(object):
     """
     Control the capture of frames and check for faces
     """
+
     def __init__(self):
         known = KnownPersons()
         self.names, self.encodings = known.get_data()
 
-        self.video_capture = cv2.VideoCapture(0)
-
         # make sure we always close sources and windows
-        atexit.register(self.video_capture.release)
-        atexit.register(cv2.destroyAllWindows)
+        atexit.register(self.stop)
 
+    def start(self):
+        self.video_capture = cv2.VideoCapture(0)
         # set resolution lower to speeds up FPS
         # Be aware!!
         # Make sure that the webcam supports the resolution that you are setting to using v4l2-ctl command
@@ -212,7 +244,6 @@ class Controller(object):
 
         self.dowork = True
 
-    def start(self):
         self.frameworker = FrameCaptureWorker(self.video_capture)
         self.frameworker.start()
         time.sleep(0.1)
@@ -227,11 +258,12 @@ class Controller(object):
                 pass
             else:
                 if item is _sentinel:
-                    print("Capture worker wants to stop, stopping all threads")
-                    self.frameworker.join()
-                    self.faceworker.join()
-                    time.sleep(0.5)
-                    self.dowork = None
+                    if _sentinel.state == 'main':
+                        print("Capture worker/user wants to stop, stopping all threads")
+                        self.stop()
+                        self.dowork = None
+                    elif _sentinel.state in ('face', 'capture'):
+                        raise ThreadException
                 elif isinstance(item, str):
                     print(f"Got from queue name: {item}")
                 else:
@@ -239,8 +271,30 @@ class Controller(object):
 
             time.sleep(0.5)
 
+    def stop(self):
+        self.frameworker.dowork = False
+        self.frameworker.join()
+        self.faceworker.dowork = False
+        self.faceworker.join()
+        time.sleep(0.1)
+        Q.queue.clear()
+        self.video_capture.release()
+        time.sleep(0.5)
 
-Contr = Controller()
-Contr.start()
+
+if __name__ == '__main__':
+    Contr = Controller()
+
+    try:
+        Contr.start()
+    except ThreadException as e:
+        print(f"Thread exception: {e}")
+        Contr.stop()
+        print(f"Stopping...")
+        time.sleep(1)
+        sys.exit(1)
+
+
+
 
 
