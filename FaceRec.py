@@ -53,7 +53,7 @@ class FrameCaptureWorker(Thread):
     """
     Threaded worker which capture opencv frames from a source
     """
-    frame_rate = 10
+    frame_rate = 5
     """FPS value. We use this to lower the rate of which we read a frame as we can't
     really lower the framerate of a cam"""
 
@@ -160,7 +160,7 @@ class FaceRecWorker(Thread):
                 # cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (255, 0, 0), cv2.FILLED)
                 # font = cv2.FONT_HERSHEY_DUPLEX
                 # cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
-                print("FaceRec.FaceRecWorker Found name", self.name)
+                #print("FaceRec.FaceRecWorker Found name", self.name)
                 return self.name
 
     def run(self):
@@ -187,8 +187,8 @@ class FaceRecWorker(Thread):
                 if frame is not None and isinstance(frame, numpy.ndarray):
                     if self._find_face(frame):
                         Q.put(self.name)
-                else:
-                    print("FaceRec.FaceRecWorker received no frame")
+                # else:
+                #     print("FaceRec.FaceRecWorker received no frame")
         print("FaceRecWorker stopped")
 
 class Controller(object):
@@ -239,7 +239,7 @@ class Controller(object):
                 else:
                     Q.put(item)
 
-            time.sleep(1)
+            time.sleep(0.5)
 
 
 Contr = Controller()
