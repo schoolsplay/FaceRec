@@ -2,19 +2,23 @@ import configparser
 import os
 import sys
 import time
-from queue import Queue
+from queue import Queue, Empty, Full
 from threading import Thread
 
+import numpy
 import numpy as np
 import cv2
 import face_recognition
 
 import atexit
 
+_sentinel = object()
+
 class NameQueue(Queue):
     def __init__(self):
-        super(NameQueue, self).__init__(maxsize=1)
+        super(NameQueue, self).__init__(maxsize=10)
 
+Q = NameQueue()
 
 class KnownPersons(object):
     """
@@ -35,6 +39,7 @@ class KnownPersons(object):
         for name, image in conf.items(each_section):
             known_face_names.append(name)
             known_face_encodings.append(face_recognition.load_image_file(os.path.join('known_persons', image)))
+    print("known persons", len(known_face_names), len(known_face_encodings))
 
     @staticmethod
     def get_data():
@@ -60,23 +65,25 @@ class FrameCaptureWorker(Thread):
         self.dowork = True
 
     def run(self):
+        print("FaceRec.FrameCaptureWorker started")
         while self.dowork:
             time_elapsed = time.time() - self.prev
-            ret, self.frame = self.src.read()
-            if not ret:
-                print("FaceRec.FrameCaptureWorker has to stop, capture read failed")
-                self.frame = None
-                self.dowork = False
 
             if time_elapsed > 1. / self.frame_rate:
                 self.prev = time.time()
-                # Display the image
-                cv2.imshow('Video', self.frame)
+                ret, frame = self.src.read()
+                try:
+                    Q.put(frame)
+                except Full as e:
+                    continue
+                else:
+                    cv2.imshow('Video', frame)
 
             # Hit 'q' on the keyboard to quit
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 print("FaceRec.FrameCaptureWorker has to stop, 'q' hit")
-                self.frame = None  # we signal the FaceRecWorker that we stopped
+                Q.empty()
+                Q.put(_sentinel)  # we signal the FaceRecWorker that we stopped
                 self.dowork = False
 
 
@@ -84,18 +91,17 @@ class FaceRecWorker(Thread):
     """
     Threaded worker that will search for a face in a opencv frame
     """
-    def __init__(self, frameworker, names, encodings, namequeue):
+    def __init__(self, frameworker, names, encodings):
         super(FaceRecWorker, self).__init__()
         self.frameworker = frameworker
         self.names = names
         self.encodings = encodings
-        self.namequeue = namequeue
         self.dowork = True
         self.reset()
 
     def reset(self):
         self.name = ''
-        self.namequeue.empty()
+        Q.empty()
 
     def _find_face(self, frame):
         # Resize frame of video to 1/2 size for faster face recognition processing
@@ -112,6 +118,7 @@ class FaceRecWorker(Thread):
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
 
             # Checking if the face is a match for known faces
+            print("encodings", self.encodings)
             matches = face_recognition.compare_faces(self.encodings, face_encoding)
 
             # Use the known face with the smallest vector distance to the new face
@@ -131,14 +138,18 @@ class FaceRecWorker(Thread):
                 return self.name
 
     def run(self):
+        print("FaceRec.FaceRecWorker started")
         while self.dowork:
-            frame = self.frameworker.frame
-            if frame:
-                if self._find_face(frame):
-                    self.namequeue.put(self.name)
+            try:
+                frame = Q.get_nowait()
+            except Empty as e:
+                continue
             else:
-                print("FaceRec.FaceRecWorker stopped, got no frame")
-                self.dowork = False
+                if frame is not None and isinstance(frame, numpy.ndarray):
+                    if self._find_face(frame):
+                        Q.put(self.name)
+                else:
+                    print("FaceRec.FaceRecWorker received no frame")
 
 
 class Controller(object):
@@ -165,16 +176,30 @@ class Controller(object):
         self.dowork = True
 
     def start(self):
-        while self.dowork:
-            self.namequeue = NameQueue()
-            self.frameworker = FrameCaptureWorker(self.video_capture).start()
-            time.sleep(0.1)
-            self.faceworker = FaceRecWorker(self.frameworker, self.names, self.encodings, self.namequeue).start()
-            time.sleep(0.1)
+        self.frameworker = FrameCaptureWorker(self.video_capture)
+        self.frameworker.start()
+        time.sleep(0.1)
+        self.faceworker = FaceRecWorker(self.frameworker, self.names, self.encodings)
+        self.faceworker.start()
+        time.sleep(0.1)
 
-            name = self.namequeue.get_nowait()
-            if name:
-                print(f"Got from queue name: {name}")
+        while self.dowork:
+            try:
+                item = Q.get_nowait()
+            except Empty as e:
+                pass
+            else:
+                if item is _sentinel:
+                    print("Capture worker wants to stop, stopping all threads")
+                    self.frameworker.join()
+                    self.faceworker.join()
+                    time.sleep(0.5)
+                    self.dowork = None
+                elif isinstance(item, str):
+                    print(f"Got from queue name: {item}")
+                else:
+                    Q.put(item)
+
             time.sleep(1)
 
 
