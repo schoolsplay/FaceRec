@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime
 from queue import Queue, Empty, Full
 from threading import Thread
 
@@ -187,8 +188,10 @@ class FaceRecWorker(Thread):
                 # # Draw a label with the name below the face
                 # cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (255, 0, 0), cv2.FILLED)
                 # font = cv2.FONT_HERSHEY_DUPLEX
-                # cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
-                # print("FaceRec.FaceRecWorker Found name", self.name)
+                # cv2.putText(frame, self.name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+                # img_name = f"found_images/{self.name}_{datetime.now()}.png"
+                # cv2.imwrite(img_name, frame)
+
                 return self.name
 
     def run(self):
