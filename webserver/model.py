@@ -19,7 +19,7 @@ class FaceRec(db.Model):
         self.creation_date = datetime.now()
 
 class User(db.Model):
-    """The User object that owns tasks."""
+    """The User table, not used yet."""
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.Unicode, nullable=False)
     email = db.Column(db.Unicode, nullable=False)
