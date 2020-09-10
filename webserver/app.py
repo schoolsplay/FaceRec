@@ -1,6 +1,10 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
+# needed so that we can import model from app in views
+import model
+import views
+
 from Constants import DBASE_URI
 
 app = Flask(__name__)
@@ -9,12 +13,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
 db = SQLAlchemy(app)
 
-from model import FaceRec, User
-
-@app.route('/')
-def hello_world():
-    return 'Hello, world!'
-
+app.add_url_rule('/', 'index', views.index)
 
 if __name__ == '__main__':
     app.run(

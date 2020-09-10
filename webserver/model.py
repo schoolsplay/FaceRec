@@ -1,5 +1,6 @@
 import secrets
 
+from Constants import DROPDB
 from app import db
 from datetime import datetime
 
@@ -32,3 +33,9 @@ class User(db.Model):
         super().__init__(*args, **kwargs)
         self.date_joined = datetime.now()
         self.token = secrets.token_urlsafe(64)
+
+
+if bool(DROPDB):
+    db.drop_all()
+db.create_all()
+db.session.commit()
