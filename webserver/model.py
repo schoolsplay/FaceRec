@@ -4,7 +4,6 @@ from Constants import DROPDB
 from app import db
 from datetime import datetime
 
-
 class FaceRec(db.Model):
     """Main table for the FaceRec tool"""
     id = db.Column(db.Integer, primary_key=True)
