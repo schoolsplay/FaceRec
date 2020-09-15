@@ -9,6 +9,7 @@ sudo apt-get install python3-venv cmake
 
 python3.6 -m venv env
 source env/bin/activate
+(or use requirements)
 python3.6 -m pip install --upgrade pip
 python3.6 -m pip install numpy
 python3.6 -m pip install pandas
